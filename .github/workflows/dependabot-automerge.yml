@@ -1,0 +1,64 @@
+name: PR maintenance
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '37 */2 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dependabot-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    if: >-
+      github.repository == 'rkstraessler/ReikemMailClient_RS' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'workflow_run' && ((github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success') || (github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch != 'main'))))
+    name: Update PR branches and maintain verified dependency updates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: dependabot-maintenance
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted main automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Create repository-scoped PR Maintenance app token
+        id: app
+        if: vars.PR_AUTOMATION_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.PR_AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.PR_AUTOMATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+      - name: Update eligible branches and verify Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: bash .github/scripts/dependabot.sh

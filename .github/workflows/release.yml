@@ -1,0 +1,54 @@
+name: Verify release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vMAJOR.MINOR.PATCH tag to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-verification-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify tagged package
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release identity and source
+        shell: bash
+        run: |
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          commit=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          git switch --detach "$commit"
+      - name: Verify package version and contents
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          version=$(cargo +stable metadata --no-deps --locked --format-version 1 \
+            | jq -er '.packages[] | select(.name == "reikem-mail-client") | .version')
+          test "$TAG" = "v$version"
+          cargo +stable test --locked --all-features
+          cargo +stable package --locked
+          cargo +stable package --locked --list
+      - name: Prepare release notes header
+        shell: bash
+        run: |
+          banner=".github/assets/release-banners/reikem-mail-client.png"
+          test -s "$banner"
+          printf '%s\n\n' "![REIKEM Mail Client Rust SDK release notes](https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$TAG/$banner)" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Verified SDK release `%s` at `%s`.\n' "$TAG" "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"

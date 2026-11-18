@@ -1,0 +1,33 @@
+[package]
+name = "reikem-mail-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Asynchronous Rust SDK for the REIKEM Mail API v2"
+license = "MIT"
+repository = "https://github.com/rkstraessler/ReikemMailClient_RS"
+readme = "README.md"
+keywords = ["reikem", "mail", "email", "sdk"]
+categories = ["api-bindings", "email"]
+include = ["/src/", "/tests/", "/licenses/", "/README.md", "/LICENSE"]
+
+[dependencies]
+bytes = "1.12.2"
+percent-encoding = "2.3.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["multipart", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["raw_value"] }
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+time = "0.3.55"
+tokio = { version = "1.54.1", features = ["fs", "rt"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["http1", "server"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
