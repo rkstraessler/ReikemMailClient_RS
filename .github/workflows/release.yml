@@ -51,4 +51,4 @@ jobs:
           banner=".github/assets/release-banners/reikem-mail-client.png"
           test -s "$banner"
           printf '%s\n\n' "![REIKEM Mail Client Rust SDK release notes](https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$TAG/$banner)" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Verified SDK release `%s` at `%s`.\n' "$TAG" "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Verified SDK release %s at %s.\n' "$TAG" "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
