@@ -58,9 +58,12 @@ classify_dependabot() {
                 else . end);
         def updates:
             gsub("\r\n"; "\n") | split("\n---\n") as $blocks
-            | if ($blocks | length) != 2 or ($blocks[1] | startswith("updated-dependencies:\n") | not)
-                 or ($blocks[1] | trim | endswith("\n...") | not) then null
-              else ($blocks[1] | metadata_records) as $records
+            | (($blocks[1] // "") + "\n" | split("\n...\n")) as $trailer
+            | if ($blocks | length) != 2 or ($trailer | length) != 2
+                 or ($trailer[0] | startswith("updated-dependencies:\n") | not)
+                 or ($trailer[1] | trim | test("^(|Signed-off-by: dependabot\\[bot\\] <support@github\\.com>)$") | not)
+                 then null
+              else ($trailer[0] | metadata_records) as $records
               | [$blocks[0] | split("\n")[]
                  | capture("^Updates `(?<name>[^`\\s]+)` from `?(?<old>[^`\\s]+)`? to `?(?<new>[^`\\s]+)`?\\s*$")] as $grouped
               | (if ($grouped | length) > 0 then $grouped

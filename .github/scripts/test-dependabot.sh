@@ -20,6 +20,8 @@ updated-dependencies:
   dependency-version: $2
   update-type: version-update:semver-$3
 ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
 EOF
 )
     jq -cn --arg message "$message" '{

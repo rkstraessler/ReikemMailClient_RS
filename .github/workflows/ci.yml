@@ -48,11 +48,21 @@ jobs:
       - run: cargo +stable doc --locked --no-deps
       - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2
         with:
-          tool: cargo-audit@0.23.0,actionlint@1.7.12
+          tool: cargo-audit@0.23.0
       - name: Audit Rust dependencies
         run: cargo audit
       - name: Validate GitHub Actions workflows
-        run: actionlint
+        shell: bash
+        run: |
+          version=1.7.12
+          checksum=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --max-time 30 \
+            "https://github.com/rhysd/actionlint/releases/download/v$version/actionlint_${version}_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint"
       - name: Test the Dependabot eligibility policy
         run: bash .github/scripts/test-dependabot.sh
 
