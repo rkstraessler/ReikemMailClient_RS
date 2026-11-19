@@ -158,7 +158,7 @@ protection_active() {
 
 maintain() {
     local number=$1 pull current head head_ref base_ref base commits files policy eligible=false update=false
-    local behind state latest review auto_merge merge_token
+    local behind state latest review
     pull=$(github_api "pulls/$number") || return
     if ! is_open_pull <<< "$pull"; then return 0; fi
     head=$(jq -er '.head.sha' <<< "$pull") || return
@@ -193,9 +193,9 @@ maintain() {
         fi
         return 0
     fi
-    if [[ "$eligible" == false ]] || ! ci_passed "$head" "$head_ref" || ! protection_active; then return 0; fi
+    if [[ "$eligible" == false || -z "${APP_TOKEN:-}" ]] || ! ci_passed "$head" "$head_ref" || ! protection_active; then return 0; fi
     state=$(gh pr view "$number" --repo "$repository" \
-        --json state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest) || return
+        --json state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision) || return
     if ! jq -e --arg head "$head" '
         .state == "OPEN" and .isDraft == false and .headRefOid == $head and .baseRefName == "main"
         and .mergeable == "MERGEABLE" and (.mergeStateStatus | IN("BEHIND", "DIRTY", "UNKNOWN") | not)
@@ -209,15 +209,11 @@ maintain() {
         return 0
     fi
     review=$(jq -r '.reviewDecision' <<< "$state") || return
-    auto_merge=$(jq -r '.autoMergeRequest != null' <<< "$state") || return
-    merge_token=${APP_TOKEN:-${GH_TOKEN:?}}
-    if [[ "$review" != APPROVED && -n "${APP_TOKEN:-}" ]]; then
+    if [[ "$review" != APPROVED ]]; then
         GH_TOKEN="$APP_TOKEN" github_api "pulls/$number/reviews" --method POST -f commit_id="$head" -f event=APPROVE --silent || return
     fi
-    if [[ "$auto_merge" == false ]]; then
-        GH_TOKEN="$merge_token" gh pr merge "$number" --repo "$repository" --squash --auto --match-head-commit "$head" || return
-        printf '#%s: requested native squash auto-merge\n' "$number"
-    fi
+    GH_TOKEN="$APP_TOKEN" github_api "pulls/$number/merge" --method PUT -f sha="$head" -f merge_method=squash --silent || return
+    printf '#%s: squash-merged the verified revision\n' "$number"
 }
 
 main() {
