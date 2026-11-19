@@ -10,15 +10,13 @@ Also available for [TypeScript](https://github.com/rkstraessler/ReikemMailClient
 
 ## Installation
 
-The SDK requires Rust 1.88 or later and a Tokio runtime. Reqwest's Rustls provider uses a native C toolchain when it builds from source. On Windows, use the MSVC Build Tools and Windows SDK.
+The SDK requires Rust 1.88 or later and a Tokio runtime. Reqwest's Rustls provider uses a native C toolchain when it builds from source. On Windows, use the MSVC Build Tools and Windows SDK. [Package on crates.io](https://crates.io/crates/reikem-mail-client)
 
 ```toml
 [dependencies]
-reikem-mail-client = "0.1"
+reikem-mail-client = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
-
-Registry installation is available once the first crate version is published. Until then, use the GitHub release with `reikem-mail-client = { git = "https://github.com/rkstraessler/ReikemMailClient_RS", tag = "v0.1.0" }`.
 
 ## Quick start
 
@@ -126,10 +124,10 @@ Install the official [autofix.ci app](https://github.com/apps/autofix-ci) and th
 ## Releases
 
 1. Update `Cargo.toml` and `Cargo.lock` for the next SemVer version. Wait for `Required CI` on `main`.
-2. Tag the checked commit as `vMAJOR.MINOR.PATCH`. Run **Rust release** on `main` with that tag to verify the version, CI, tests, and Cargo package. Enable the `publish` input to upload the crate through Trusted Publishing.
-3. Create a GitHub Release from that tag. Use the workflow's banner Markdown and the categories from [release.yml](.github/release.yml).
+2. Tag the checked commit as `vMAJOR.MINOR.PATCH`. Administrators can create release tags, and the tags are immutable. Run **Rust release** manually on `main` with the tag for a packaging check before publication.
+3. Publish a stable GitHub Release from that tag. The workflow verifies the tagged commit and publishes the crate to crates.io through Trusted Publishing. Use the banner Markdown from the workflow summary and the categories from [release.yml](.github/release.yml).
 
-Publish the first version manually with `cargo publish --locked` from the verified tag to register the crate. Then create a Trusted Publisher for `rkstraessler/ReikemMailClient_RS`, workflow `release.yml`, and environment `crates-io`. Restrict that GitHub environment to the `main` branch. [Trusted Publishing](https://crates.io/docs/trusted-publishing) · [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client.png)
+The trusted publisher uses `rkstraessler/ReikemMailClient_RS`, workflow `release.yml`, and environment `crates-io`. The environment accepts protected `v*` tags. [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client.png) · [Trusted Publishing](https://crates.io/docs/trusted-publishing)
 
 ## License
 
