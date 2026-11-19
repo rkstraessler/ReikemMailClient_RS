@@ -1,4 +1,4 @@
-name: Verify release
+name: Rust release
 
 on:
   workflow_dispatch:
@@ -7,12 +7,16 @@ on:
         description: Existing vMAJOR.MINOR.PATCH tag to verify
         required: true
         type: string
+      publish:
+        description: Publish the verified crate to crates.io
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-verification-${{ inputs.tag }}
+  group: rust-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -21,20 +25,38 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
     env:
       TAG: ${{ inputs.tag }}
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Check release identity and source
+        id: source
         shell: bash
         run: |
           [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           commit=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          printf 'commit=%s\nversion=%s\n' "$commit" "${TAG#v}" >> "$GITHUB_OUTPUT"
           git switch --detach "$commit"
+      - name: Check Required CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+        shell: bash
+        run: |
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=push&branch=main&head_sha=$COMMIT&status=success&per_page=10")
+          run_id=$(jq -er '.workflow_runs[0].id' <<< "$runs")
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100")
+          jq -e '[.jobs[] | select(.name == "Required CI")] | length == 1 and .[0].conclusion == "success"' <<< "$jobs"
       - name: Verify package version and contents
         shell: bash
         run: |
@@ -52,3 +74,64 @@ jobs:
           test -s "$banner"
           printf '%s\n\n' "![REIKEM Mail Client Rust SDK release notes](https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$TAG/$banner)" >> "$GITHUB_STEP_SUMMARY"
           printf 'Verified SDK release %s at %s.\n' "$TAG" "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish to crates.io
+    if: inputs.publish && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_COMMIT: ${{ needs.verify.outputs.commit }}
+      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+      - name: Look up the version in the crates.io index
+        id: registry
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          index="$RUNNER_TEMP/crate-index"
+          status=$(curl -sS --proto '=https' -o "$index" -w '%{http_code}' \
+              https://index.crates.io/re/ik/reikem-mail-client)
+          case "$status" in
+              200)
+                  jq -sr --arg version "$RELEASE_VERSION" \
+                      '"published=\(any(.[]; .vers == $version))"' "$index" >> "$GITHUB_OUTPUT"
+                  ;;
+              404) echo 'published=false' >> "$GITHUB_OUTPUT" ;;
+              *) echo "Unexpected crates.io index response HTTP $status" >&2; exit 1 ;;
+          esac
+      - name: Set up Cargo
+        if: steps.registry.outputs.published == 'false'
+        run: rustup toolchain install stable --profile minimal
+      - name: Authenticate to crates.io
+        if: steps.registry.outputs.published == 'false'
+        id: crates
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+      - name: Publish the verified package
+        if: steps.registry.outputs.published == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates.outputs.token }}
+        run: cargo +stable publish --locked --no-verify
+      - name: Verify the source of the published crate
+        env:
+          ALREADY_PUBLISHED: ${{ steps.registry.outputs.published }}
+        shell: bash
+        run: |
+          package="reikem-mail-client-$RELEASE_VERSION"
+          downloaded="$RUNNER_TEMP/$package.crate"
+          curl --fail --silent --show-error --proto '=https' --retry 4 --retry-all-errors \
+              -o "$downloaded" "https://static.crates.io/crates/reikem-mail-client/$package.crate"
+          tar -xOzf "$downloaded" "$package/.cargo_vcs_info.json" \
+              | jq -e --arg sha "$RELEASE_COMMIT" '.git.sha1 == $sha and .git.dirty != true'
+          if [[ "$ALREADY_PUBLISHED" == false ]]; then
+              cmp "$downloaded" "target/package/$package.crate"
+          fi

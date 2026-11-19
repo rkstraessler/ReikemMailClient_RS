@@ -3,11 +3,11 @@ name = "reikem-mail-client"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-description = "Asynchronous Rust SDK for the REIKEM Mail API v2"
+description = "Rust SDK for the REIKEM Mail API v2. Send email, submit personalized batches, query mail history, and download files."
 license = "MIT"
 repository = "https://github.com/rkstraessler/ReikemMailClient_RS"
 readme = "README.md"
-keywords = ["reikem", "mail", "email", "sdk"]
+keywords = ["reikem-mail", "email", "email-api", "mail-client", "sdk"]
 categories = ["api-bindings", "email"]
 include = ["/src/", "/tests/", "/licenses/", "/README.md", "/LICENSE"]
 

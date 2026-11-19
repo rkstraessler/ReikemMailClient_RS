@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '37 */2 * * *'
+    - cron: '13,43 * * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -23,6 +23,7 @@ jobs:
   maintain:
     if: >-
       github.repository == 'rkstraessler/ReikemMailClient_RS' &&
+      github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       github.event_name == 'pull_request_target' ||
@@ -36,7 +37,7 @@ jobs:
     permissions:
       actions: read
       checks: read
-      contents: write
+      contents: read
       pull-requests: write
     steps:
       - name: Check out trusted main automation

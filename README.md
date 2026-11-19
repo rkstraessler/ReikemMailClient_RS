@@ -1,21 +1,28 @@
 # REIKEM Mail Client for Rust
 
 [![CI](https://github.com/rkstraessler/ReikemMailClient_RS/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rkstraessler/ReikemMailClient_RS/actions/workflows/ci.yml)
-[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An asynchronous Rust SDK for the REIKEM Mail API v2. Send grouped or personalized mail, look up delivery history, and download attachments through a shared Reqwest connection pool with Rustls and platform certificate verification.
+Rust SDK for the REIKEM Mail API v2. Send email, submit personalized batches, query mail history, and download files. The asynchronous client uses a shared Reqwest connection pool with Rustls and platform certificate verification.
 
-## Quick start
+[GitHub Releases](https://github.com/rkstraessler/ReikemMailClient_RS/releases) · [Report an issue](https://github.com/rkstraessler/ReikemMailClient_RS/issues/new)
+
+Also available for [TypeScript](https://github.com/rkstraessler/ReikemMailClient_TS) and [Go](https://github.com/rkstraessler/ReikemMailClient_GO).
+
+## Installation
 
 The SDK requires Rust 1.88 or later and a Tokio runtime. Reqwest's Rustls provider uses a native C toolchain when it builds from source. On Windows, use the MSVC Build Tools and Windows SDK.
 
 ```toml
 [dependencies]
-reikem-mail-client = { git = "https://github.com/rkstraessler/ReikemMailClient_RS", tag = "v0.1.0" }
+reikem-mail-client = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-For development snapshots, pin a commit with `rev`. [GitHub Releases](https://github.com/rkstraessler/ReikemMailClient_RS/releases)
+Registry installation is available once the first crate version is published. Until then, use the GitHub release with `reikem-mail-client = { git = "https://github.com/rkstraessler/ReikemMailClient_RS", tag = "v0.1.0" }`.
+
+## Quick start
+
+Set `MAIL_API_URL`, `MAIL_AUTH_KEY`, and `MAIL_ADAPTER_KEY` in your environment. The example queues one email and prints the queue IDs.
 
 ```rust,no_run
 use std::{env, time::Duration};
@@ -25,19 +32,19 @@ use reikem_mail_client::{ClientConfig, EmailApiClient, MailAddress, SendMailOpti
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ClientConfig::new(
-        &env::var("REIKEM_MAIL_URL")?,
-        &env::var("REIKEM_MAIL_AUTH_KEY")?,
-        &env::var("REIKEM_MAIL_ADAPTER_KEY")?,
+        &env::var("MAIL_API_URL")?,
+        &env::var("MAIL_AUTH_KEY")?,
+        &env::var("MAIL_ADAPTER_KEY")?,
     )?
     .with_timeouts(Duration::from_secs(10), Duration::from_secs(30))?;
     let client = EmailApiClient::new(config)?;
 
     let mut mail = SendMailOptions::new(
-        vec![MailAddress::new("recipient@example.com")],
-        "Your account is ready",
-        "<p>Welcome!</p>",
+        vec![MailAddress::new("customer@example.com")],
+        "Your contract is ready",
+        "<p>Your contract is ready to review.</p>",
     );
-    mail.idempotency_key = Some("welcome:account-123:v1".into());
+    mail.idempotency_key = Some("contract:4711:v2:ready".into());
 
     let response = client.send_mail(&mail).await?;
     if response.is_idempotency_conflict() {
@@ -51,26 +58,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Configuration
+
 Use an HTTPS origin with an optional reverse-proxy prefix. The client also accepts `/api/send`, `/api/v2/send`, and `/api/v2` URL suffixes. It sends `Authorization: Bearer <authKey>` and `X-Adapter-Key: <adapterKey>` with every request. Both keys accept printable non-space ASCII. The connection timeout covers TCP and TLS. The request timeout covers the HTTP exchange through the response body. Both timeouts take whole seconds between 1 and 2,147,483.
 
-## TypeScript and Rust feature matrix
+## API overview
 
-The TypeScript package exports the following operations. The Rust calls use the same POST routes and wire payloads.
+All network methods use `POST` with paths relative to the proxy prefix.
 
-| TypeScript | Rust | Request / result |
+| Method | Endpoint | Use |
 | --- | --- | --- |
-| `new EmailAPIClient(options)` | `EmailApiClient::new(ClientConfig::new(…)?)` | Configure base URL, both headers and timeouts |
-| `new EmailAPIClient(url, authKey, adapterKey)` | `EmailApiClient::from_credentials` | Same configuration with the default timeouts of 10 and 30 seconds |
-| `sendMail(options)` | `send_mail(&SendMailOptions)` | `/api/v2/send` → `SendResponse` |
-| `sendMailList(options)` | `send_mail_list(&SendMailOptions)` | Alias for grouped send through `/api/v2/send` |
-| `sendPersonalizedMailBatch(options)` | `send_personalized_mail_batch(&SendPersonalizedMailBatchOptions)` | `/api/v2/send-batch` → `BatchResponse` with ordered partial results |
-| `getMailHistory(options)` | `get_mail_history(&GetMailHistoryOptions)` | `/api/v2/history` → `ApiResponse<ApiData>` with inbound and outbound history |
-| `downloadFile(options)` | `download_file(&DownloadFileOptions)` | `/api/v2/files/download` → `DownloadOutcome` with bytes, a saved path, or an API error envelope |
-| `client.createAttachments(paths)` / `createAttachments(paths)` | `client.create_attachments(&paths)` / `create_attachments(&paths)` | Read regular files and resolve their MIME types using the same extension data |
-| `new EmailAttachment(filename, mimeType, tmpPath, size)` | `EmailAttachment::new` and `Attachment::from` | Read the file when sending and use its actual length |
-| `MailStatus` constants, `all()`, `isKnown()` | `MailStatus` enum, `all()`, `is_known()` | All eight wire statuses. `QueueStatus::Other` preserves new values |
-| `EmailAPIClient.MAX_FILTER_CONTEXT_CHARACTERS` | `EmailApiClient::MAX_FILTER_CONTEXT_CHARACTERS` | 1,000 Unicode characters after normalization |
-| `EmailAPITransportError` | `Error::Transport(TransportErrorKind)` | Separate timeout, connection, and body-transfer failures |
+| `send_mail` and `send_mail_list` | `/api/v2/send` | Queue one message for one or more To recipients. |
+| `send_personalized_mail_batch` | `/api/v2/send-batch` | Submit up to 100 messages with shared defaults and ordered per-message results. |
+| `get_mail_history` | `/api/v2/history` | Look up mail history by date range, message IDs, or both. |
+| `download_file` | `/api/v2/files/download` | Return bytes, a saved path, or an API error envelope. |
+| `create_attachments` or `client.create_attachments` | Local | Read files as binary attachments. |
 
 ### Send and batch options
 
@@ -79,6 +81,12 @@ The TypeScript package exports the following operations. The Rust calls use the 
 - Batches accept 1–100 messages and expand `cc`, `bcc`, `reply_to`, `attachments` and `filter_context` defaults. An omitted value inherits its default. An empty list or explicit `Nullable::Null` overrides it where the field permits that value.
 - Without file parts, the SDK sends JSON. For uploads, `payload` holds the JSON and `attachments[n]` holds the original bytes. Each message accepts up to 100 unique file names. Multipart indices are continuous across the batch. `BinaryAttachment::new` accepts bytes directly.
 - An `idempotency_key` is passed unchanged to the server. The API can return a previous send snapshot with `replayed: true` or HTTP 409 with `idempotency_conflict`. To check the current delivery state, query history.
+
+### History and downloads
+
+History accepts `YYYY-MM-DD` strings or UTC dates derived from `SystemTime`. Supply `date_from` when querying without IDs. History and download IDs accept positive `i64` values or decimal strings and are sent as canonical decimal strings. The reference API exposes no pagination parameters.
+
+`DownloadFileOptions::new(DownloadSource::Inbound, "123")` selects memory. Choose `DownloadTarget::Directory(path)` to save under the server's sanitized name or `DownloadTarget::Path(path)` to select a file. An existing directory or trailing separator uses the server name. A download validates the file response before replacing a destination. Use caller-controlled paths for local files and destinations. The SDK holds attachment bytes and responses in memory.
 
 ```rust
 use reikem_mail_client::{EmailApiClient, Error, GetMailHistoryOptions, HistoryMessageIds};
@@ -96,15 +104,9 @@ async fn count_outbound(client: &EmailApiClient) -> Result<usize, Error> {
 }
 ```
 
-### History and downloads
+### Responses and errors
 
-History accepts `YYYY-MM-DD` strings or UTC dates derived from `SystemTime`. Supply `date_from` when querying without IDs. History and download IDs accept positive `i64` values or decimal strings and are sent as canonical decimal strings. The reference API exposes no pagination parameters.
-
-`DownloadFileOptions::new(DownloadSource::Inbound, "123")` selects memory. Choose `DownloadTarget::Directory(path)` to save under the server's sanitized name or `DownloadTarget::Path(path)` to select a file. An existing directory or trailing separator uses the server name. A download validates the file response before replacing a destination. Use caller-controlled paths for local files and destinations. The SDK holds attachment bytes and responses in memory.
-
-### Response and error handling
-
-Valid API envelopes are returned as values at any HTTP status. `http_code` is the actual HTTP status. Typed payloads are available through `data.as_object()`. Unknown fields, new queue statuses, unexpected object schemas, and array envelopes are preserved. Numbers outside JavaScript's safe integer range retain their original JSON spelling as strings. JSON responses are limited to 128 levels of nesting.
+Valid API envelopes are returned as values at any HTTP status. `http_code` is the actual HTTP status. Typed payloads are available through `data.as_object()`. Unknown fields, new queue statuses, unexpected object schemas, and array envelopes are preserved. Numbers outside JavaScript's safe integer range retain their original JSON spelling as strings. Use `MailStatus` for the known queue statuses. JSON responses are limited to 128 levels of nesting.
 
 `Error` reports input, transport, invalid JSON, invalid envelopes, and local file failures without embedding credentials or response bodies. The client follows no redirects and performs no automatic retries. Dropping the future stops waiting for the HTTP request. A submitted send may still be processed by the server, and an already started file replacement may finish.
 
@@ -112,17 +114,23 @@ Valid API envelopes are returned as values at any HTTP status. `http_code` is th
 
 Run `cargo test --locked --all-features` for the local HTTP and filesystem contract suite. Generate public API documentation with `cargo doc --no-deps --open`. GitHub Actions runs formatting, build, Clippy, Rust 1.88 compatibility, dependency review and RustSec checks.
 
-## GitHub maintenance
+### GitHub automation
 
-- `main` requires a pull request, one current approval, resolved conversations and the GitHub Actions `Required CI` check on an up-to-date branch. Only repository administrators have a bypass. CODEOWNERS requests the maintainer's review. The repository uses squash merges and deletes merged branches. [Ruleset definition](.github/main-ruleset.json)
-- Dependabot checks Cargo and GitHub Actions daily at 03:00 Europe/Berlin. Compatible, verified patch and minor updates can use native auto-merge after CI and review. Major updates, breaking pre-1.0 updates, conflicting changes, and branches with extra authors require manual review. Run `bash .github/scripts/sync-labels.sh` to synchronize the PR labels.
-- autofix.ci applies rustfmt and machine-applicable Clippy fixes on pull requests. Install the official app for this repository. Its fixes trigger CI on the new revision. [autofix.ci](https://autofix.ci/)
-- The PR Maintenance app updates open PR branches against their target branches when GitHub permits it. It can approve eligible Dependabot revisions once their CI passes. Configure `PR_AUTOMATION_CLIENT_ID` and the encrypted `PR_AUTOMATION_PRIVATE_KEY` in the `dependabot-maintenance` environment, restricted to `main`. The workflow requests a repository-scoped installation token with Contents, Pull requests, and Workflows write access. It has no ruleset bypass. Without the app, Dependabot retains native rebasing and a maintainer supplies the approval. [GitHub App token action](https://github.com/actions/create-github-app-token)
+- **Branch protection** requires an up-to-date pull request, one current approval, resolved conversations, and the GitHub Actions `Required CI` check. GitHub uses squash merges and deletes merged branches. Repository administrators have a bypass for review and CI. A separate rule blocks force pushes and deletion for everyone. [Review and CI rules](.github/main-ruleset.json) · [History rules](.github/main-history-ruleset.json)
+- **Dependabot** checks Cargo and GitHub Actions daily at 03:00 `Europe/Berlin` and groups routine compatible updates separately from security updates. [Dependabot configuration](.github/dependabot.yml)
+- **PR maintenance** updates conflict-free branches in this repository for open pull requests targeting `main`. The `reikem-github-pr-maintenance` app can approve and squash-merge signed, compatible Dependabot updates after `Required CI` passes on the current head. Major, potentially breaking pre-1.0 minor, and unclassified updates need manual review. [PR maintenance workflow](.github/workflows/dependabot-automerge.yml)
+- **autofix.ci** applies rustfmt and machine-applicable Clippy fixes on pull requests. Its commits rerun CI. [Autofix workflow](.github/workflows/autofix.yml)
+
+Install the official [autofix.ci app](https://github.com/apps/autofix-ci) and the repository-scoped PR maintenance app. Keep the app key in the indicated environment and restrict deployments to `main`. GitHub Actions uses read-only default permissions. Set the environment variable `PR_AUTOMATION_CLIENT_ID` and the encrypted secret `PR_AUTOMATION_PRIVATE_KEY` in `dependabot-maintenance`. To synchronize labels, run `bash .github/scripts/sync-labels.sh`.
 
 ## Releases
 
 1. Update `Cargo.toml` and `Cargo.lock` for the next SemVer version. Wait for `Required CI` on `main`.
-2. Tag the checked commit as `vMAJOR.MINOR.PATCH`. Run **Verify release** on `main` with that tag to check the version, ancestry, tests and Cargo package.
-3. Create a GitHub Release draft from the existing tag. Use the verification run's banner Markdown and the release categories from [release.yml](.github/release.yml). Review and publish the Release Notes on GitHub.
+2. Tag the checked commit as `vMAJOR.MINOR.PATCH`. Run **Rust release** on `main` with that tag to verify the version, CI, tests, and Cargo package. Enable the `publish` input to upload the crate through Trusted Publishing.
+3. Create a GitHub Release from that tag. Use the workflow's banner Markdown and the categories from [release.yml](.github/release.yml).
 
-The GitHub tag is the Cargo dependency source. Registry publication requires separate approval. [Release banner](.github/assets/release-banners/reikem-mail-client.png) · [MIT license](LICENSE)
+Publish the first version manually with `cargo publish --locked` from the verified tag to register the crate. Then create a Trusted Publisher for `rkstraessler/ReikemMailClient_RS`, workflow `release.yml`, and environment `crates-io`. Restrict that GitHub environment to the `main` branch. [Trusted Publishing](https://crates.io/docs/trusted-publishing) · [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client.png)
+
+## License
+
+[MIT](LICENSE)
